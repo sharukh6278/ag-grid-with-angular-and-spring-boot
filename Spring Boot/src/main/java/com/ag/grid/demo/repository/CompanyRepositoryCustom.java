@@ -1,6 +1,7 @@
 package com.ag.grid.demo.repository;
 
 import com.ag.grid.demo.model.CompanyResponse;
+import com.ag.grid.demo.model.FilterModel;
 import com.ag.grid.demo.model.RequestWithFilterAndSort;
 import com.ag.grid.demo.pojo.Company;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,8 +13,11 @@ import org.springframework.stereotype.Component;
 import javax.persistence.EntityManager;
 import javax.persistence.criteria.CriteriaBuilder;
 import javax.persistence.criteria.CriteriaQuery;
+import javax.persistence.criteria.Predicate;
 import javax.persistence.criteria.Root;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Component
@@ -34,12 +38,71 @@ public class CompanyRepositoryCustom {
                 companyRoot.get("leave")
                 );
 
-        Optional.ofNullable(requestWithFilterAndSort.getColId()).isPresent(colId);
+        if(requestWithFilterAndSort.getColId()!=null && requestWithFilterAndSort.getSort().equals("desc")){
+            companyResponseCriteriaQuery.orderBy(criteriaBuilder.desc(companyRoot.get(requestWithFilterAndSort.getColId())));
+        }
+        else if(requestWithFilterAndSort.getColId()!=null && requestWithFilterAndSort.getSort().equals("asc")){
+            companyResponseCriteriaQuery.orderBy(criteriaBuilder.asc(companyRoot.get(requestWithFilterAndSort.getColId())));
+        }
+
+        List<Predicate> predicateList=new ArrayList<>();
+        predicateList.addAll(getFilter(criteriaBuilder,predicateList,companyRoot,requestWithFilterAndSort));
+        Predicate predicateArray[]=new Predicate[predicateList.size()];
+
+        companyResponseCriteriaQuery.where(criteriaBuilder.and(predicateList.toArray(predicateArray)));
+
         List<CompanyResponse> companyResponseList=entityManager.createQuery(companyResponseCriteriaQuery).getResultList();
         List<CompanyResponse> companyResponses=entityManager.createQuery(companyResponseCriteriaQuery).
                 setFirstResult((int) pageable.getOffset()).
                 setMaxResults(pageable.getPageSize()).
                 getResultList();
         return new PageImpl<>(companyResponses,pageable,companyResponseList.size());
+    }
+
+    private List<Predicate> getFilter(CriteriaBuilder criteriaBuilder,List<Predicate> predicateList,Root<Company> companyRoot,RequestWithFilterAndSort requestWithFilterAndSort){
+        Optional.ofNullable(requestWithFilterAndSort.getFilterModel()).ifPresent(filterModelMap->{
+            for(Map.Entry<String, FilterModel> filterModelEntry:filterModelMap.entrySet()){
+
+                String colName=filterModelEntry.getKey();
+                FilterModel filterModel=filterModelEntry.getValue();
+                System.out.println("colName in filter : "+colName);
+                /*if(filterModel.getType().equalsIgnoreCase("NUMBER") && filterModel.getFilterType().equalsIgnoreCase("GREATETHEN")){
+                    predicateList.add(criteriaBuilder.ge(companyRoot.get(colName),Long.parseLong(filterModel.getFilter())));
+                }
+                else if(filterModel.getType().equalsIgnoreCase("NUMBER") && filterModel.getFilterType().equalsIgnoreCase("LESSTHEN")){
+                    predicateList.add(criteriaBuilder.lessThan(companyRoot.get(colName),Long.parseLong(filterModel.getFilter())));
+
+                }*/
+                if(filterModel.getType().equalsIgnoreCase("equals")){
+                    predicateList.add(criteriaBuilder.equal(companyRoot.get(colName),filterModel.getFilter()));
+                }
+                else if(filterModel.getType().equalsIgnoreCase("notEqual")){
+                    predicateList.add(criteriaBuilder.notEqual(companyRoot.get(colName),filterModel.getFilter()));
+
+                }
+                else if(filterModel.getType().equalsIgnoreCase("contains")){
+                    predicateList.add(criteriaBuilder.like(companyRoot.get(colName),filterModel.getFilter()));
+
+                }
+                else if(filterModel.getType().equalsIgnoreCase("notContains")){
+                    predicateList.add(criteriaBuilder.notLike(companyRoot.get(colName),filterModel.getFilter()));
+
+                }
+                else if(filterModel.getType().equalsIgnoreCase("startsWith")){
+                    predicateList.add(criteriaBuilder.like(companyRoot.get(colName),"%"+filterModel.getFilter()));
+
+                }
+                else if(filterModel.getType().equalsIgnoreCase("endsWith")){
+                    predicateList.add(criteriaBuilder.like(companyRoot.get(colName),filterModel.getFilter()+"%"));
+                }
+                else if(filterModel.getType().equalsIgnoreCase("blank")){
+                    predicateList.add(criteriaBuilder.isNull(companyRoot.get(colName)));
+                }
+                else if(filterModel.getType().equalsIgnoreCase("notBlank")){
+                    predicateList.add(criteriaBuilder.isNotNull(companyRoot.get(colName)));
+                }
+            }
+        });
+        return  predicateList;
     }
 }
